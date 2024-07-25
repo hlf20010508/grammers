@@ -36,7 +36,7 @@ fn main() -> std::io::Result<()> {
         ..Default::default()
     };
 
-    generate_rust_code(&mut file, &definitions, CURRENT_VERSION, &config)?;
+    generate_rust_code(&definitions, CURRENT_VERSION, &config)?;
     file.flush()?;
 
     Ok(())

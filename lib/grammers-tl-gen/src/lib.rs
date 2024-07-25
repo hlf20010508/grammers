@@ -18,7 +18,12 @@ mod rustifier;
 mod structs;
 
 use grammers_tl_parser::tl::{Category, Definition, Type};
-use std::io::{self, Write};
+use std::{
+    env,
+    fs::File,
+    io::{self, BufWriter, Write},
+    path::Path,
+};
 
 pub struct Config {
     pub gen_name_for_id: bool,
@@ -48,33 +53,40 @@ fn ignore_type(ty: &Type) -> bool {
     SPECIAL_CASED_TYPES.iter().any(|&x| x == ty.name)
 }
 
-pub fn generate_rust_code(
-    file: &mut impl Write,
-    definitions: &[Definition],
-    layer: i32,
-    config: &Config,
-) -> io::Result<()> {
+fn generate_rust_code_license(file: &mut impl Write) -> io::Result<()> {
     writeln!(
         file,
-        r#"
-// Copyright 2020 - developers of the `grammers` project.
+        r#"// Copyright 2020 - developers of the `grammers` project.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
-// except according to those terms.
-
-/// The schema layer from which the definitions were generated.
-pub const LAYER: i32 = {layer};
-"#
+// except according to those terms."#
     )?;
 
+    Ok(())
+}
+
+fn generate_rust_code_layer(file: &mut impl Write, layer: i32) -> io::Result<()> {
+    writeln!(
+        file,
+        r#"/// The schema layer from which the definitions were generated.
+pub const LAYER: i32 = {layer};"#
+    )?;
+
+    Ok(())
+}
+
+fn generate_rust_code_name_for_id(
+    file: &mut impl Write,
+    definitions: &[Definition],
+    config: &Config,
+) -> io::Result<()> {
     if config.gen_name_for_id {
         writeln!(
             file,
-            r#"
-/// Return the name from the `.tl` definition corresponding to the provided definition identifier.
+            r#"/// Return the name from the `.tl` definition corresponding to the provided definition identifier.
 pub fn name_for_id(id: u32) -> &'static str {{
     match id {{
         0x1cb5c415 => "vector","#
@@ -88,15 +100,78 @@ pub fn name_for_id(id: u32) -> &'static str {{
             r#"
         _ => "(unknown)",
     }}
-}}
-    "#,
+}}"#,
         )?;
     }
 
+    Ok(())
+}
+
+pub fn generate_rust_code(
+    definitions: &[Definition],
+    layer: i32,
+    config: &Config,
+) -> io::Result<()> {
     let metadata = metadata::Metadata::new(definitions);
-    structs::write_category_mod(file, Category::Types, definitions, &metadata, config)?;
-    structs::write_category_mod(file, Category::Functions, definitions, &metadata, config)?;
-    enums::write_enums_mod(file, definitions, &metadata, config)?;
+
+    {
+        let mut file = BufWriter::new(File::create(
+            Path::new(&env::var("OUT_DIR").unwrap()).join("generated_layer.rs"),
+        )?);
+
+        generate_rust_code_license(&mut file)?;
+        generate_rust_code_layer(&mut file, layer)?;
+
+        file.flush()?;
+    }
+
+    {
+        let mut file = BufWriter::new(File::create(
+            Path::new(&env::var("OUT_DIR").unwrap()).join("generated_name_for_id.rs"),
+        )?);
+
+        generate_rust_code_license(&mut file)?;
+        generate_rust_code_name_for_id(&mut file, definitions, config)?;
+
+        file.flush()?;
+    }
+
+    {
+        let mut file = BufWriter::new(File::create(
+            Path::new(&env::var("OUT_DIR").unwrap()).join("generated_category_types.rs"),
+        )?);
+
+        generate_rust_code_license(&mut file)?;
+        structs::write_category_mod(&mut file, Category::Types, definitions, &metadata, config)?;
+
+        file.flush()?;
+    }
+    {
+        let mut file = BufWriter::new(File::create(
+            Path::new(&env::var("OUT_DIR").unwrap()).join("generated_category_funcs.rs"),
+        )?);
+
+        generate_rust_code_license(&mut file)?;
+        structs::write_category_mod(
+            &mut file,
+            Category::Functions,
+            definitions,
+            &metadata,
+            config,
+        )?;
+
+        file.flush()?;
+    }
+    {
+        let mut file = BufWriter::new(File::create(
+            Path::new(&env::var("OUT_DIR").unwrap()).join("generated_category_enums.rs"),
+        )?);
+
+        generate_rust_code_license(&mut file)?;
+        enums::write_enums_mod(&mut file, definitions, &metadata, config)?;
+
+        file.flush()?;
+    }
 
     Ok(())
 }

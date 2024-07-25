@@ -8,10 +8,8 @@
 use grammers_tl_gen::{generate_rust_code, Config};
 use grammers_tl_parser::parse_tl_file;
 use grammers_tl_parser::tl::Definition;
-use std::env;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
-use std::path::Path;
+use std::io::{self, BufRead, BufReader, Read};
 
 /// Load the type language definitions from a certain file.
 /// Parse errors will be printed to `stderr`, and only the
@@ -66,10 +64,6 @@ fn main() -> std::io::Result<()> {
         definitions
     };
 
-    let mut file = BufWriter::new(File::create(
-        Path::new(&env::var("OUT_DIR").unwrap()).join("generated.rs"),
-    )?);
-
     let config = Config {
         gen_name_for_id: true,
         deserializable_functions: cfg!(feature = "deserializable-functions"),
@@ -78,7 +72,7 @@ fn main() -> std::io::Result<()> {
         impl_from_type: cfg!(feature = "impl-from-type"),
     };
 
-    generate_rust_code(&mut file, &definitions, layer, &config)?;
-    file.flush()?;
+    generate_rust_code(&definitions, layer, &config)?;
+
     Ok(())
 }
