@@ -12,6 +12,7 @@ use crate::Client;
 use futures_util::stream::{FuturesUnordered, StreamExt as _};
 use grammers_mtsender::InvocationError;
 use grammers_tl_types as tl;
+use log::info;
 use std::sync::Arc;
 use tokio::{
     io::{self, AsyncRead, AsyncReadExt},
@@ -32,8 +33,10 @@ use {
 pub const MIN_CHUNK_SIZE: i32 = 4 * 1024;
 pub const MAX_CHUNK_SIZE: i32 = 512 * 1024;
 const FILE_MIGRATE_ERROR: i32 = 303;
+const TIMEOUT_ERROR: i32 = -503;
 const BIG_FILE_SIZE: usize = 10 * 1024 * 1024;
 const WORKER_COUNT: usize = 4;
+const MAX_RETRIES: usize = 5;
 
 pub struct DownloadIter {
     client: Client,
@@ -132,6 +135,7 @@ impl DownloadIter {
 
         // TODO handle maybe FILEREF_UPGRADE_NEEDED
         let mut dc: Option<u32> = None;
+        let mut retries = 0;
         loop {
             let result = match dc.take() {
                 None => self.client.invoke(&self.request).await,
@@ -155,6 +159,13 @@ impl DownloadIter {
                 }
                 Err(InvocationError::Rpc(err)) if err.code == FILE_MIGRATE_ERROR => {
                     dc = err.value;
+                    continue;
+                }
+                Err(InvocationError::Rpc(err))
+                    if err.code == TIMEOUT_ERROR && retries <= MAX_RETRIES =>
+                {
+                    retries += 1;
+                    info!("{}, retrying {}", err.name, retries);
                     continue;
                 }
                 Err(e) => Err(e),
